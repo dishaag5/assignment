@@ -12,6 +12,8 @@ pip install PyMuPDF numpy
 
 import fitz  # PyMuPDF
 import numpy as np
+import os
+
 
 # Load PDF and extract text
 def extract_words_from_pdf(pdf_path, max_pages=2):
@@ -111,3 +113,93 @@ def main(pdf_path):
 # === Run it ===
 if __name__ == "__main__":
     main("/Workspace/Users/dbuser14@meteoros.ai/XGBoost_WM.pdf")  # <-- Replace with your actual PDF path
+
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 3rd way full code
+
+# COMMAND ----------
+
+import fitz  # PyMuPDF for PDF reading
+import numpy as np
+import os
+
+# ---------- 1. Read and extract unique words from PDF ----------
+def extract_words_from_pdf(pdf_path):
+    doc = fitz.open(pdf_path)
+    text = ""
+    for page in doc:
+        text += page.get_text()
+    words = text.split()
+    clean_words = [w.strip('.,!?()[]{}:;"\'').lower() for w in words if w.isalpha()]
+    return list(set(clean_words))  # return unique words
+
+# ---------- 2. Generate fixed random embedding using word hash ----------
+def generate_embedding(word, dim):
+    np.random.seed(abs(hash(word)) % (10 ** 8))  # hash-based consistent seed
+    return np.random.rand(dim)
+
+# ---------- 3. Save all words and their embeddings into 3 files ----------
+def save_embeddings(words, dims, paths):
+    for dim, path in zip(dims, paths):
+        with open(path, 'w') as f:
+            for word in words:
+                emb = generate_embedding(word, dim)
+                emb_str = ' '.join(map(str, emb))
+                f.write(f"{word} {emb_str}\n")
+
+# ---------- 4. Load existing embeddings from a file ----------
+def load_embeddings(path):
+    emb_dict = {}
+    if not os.path.exists(path):
+        return emb_dict
+    with open(path, 'r') as f:
+        for line in f:
+            parts = line.strip().split()
+            word = parts[0]
+            vector = list(map(float, parts[1:]))
+            emb_dict[word] = np.array(vector)
+    return emb_dict
+
+# ---------- 5. Search or generate embedding for a given word ----------
+def search_or_generate(word, dims, paths):
+    found = False
+    results = []
+
+    for dim, path in zip(dims, paths):
+        emb_dict = load_embeddings(path)
+
+        if word in emb_dict:
+            print(f"[{dim}D] Found: {emb_dict[word]}")
+            results.append(emb_dict[word])
+            found = True
+        else:
+            print(f"[{dim}D] '{word}' not found, generating...")
+            new_emb = generate_embedding(word, dim)
+            results.append(new_emb)
+            with open(path, 'a') as f:
+                emb_str = ' '.join(map(str, new_emb))
+                f.write(f"{word} {emb_str}\n")
+
+    if not found:
+        print("Word was not previously embedded. New embeddings generated and stored.")
+
+    return results
+
+# ---------- 6. MAIN EXECUTION ----------
+
+# Config
+pdf_file = '/Workspace/Users/dbuser14@meteoros.ai/XGBoost_WM.pdf'  # replace with the path to your PDF
+embedding_dims = [8, 16, 32]
+embedding_files = ['embed_8d.txt', 'embed_16d.txt', 'embed_32d.txt']
+
+# Step 1: Extract and embed all unique words from PDF
+pdf_words = extract_words_from_pdf(pdf_file)
+save_embeddings(pdf_words, embedding_dims, embedding_files)
+print("✅ Initial embeddings generated from PDF.")
+
+# Step 2: Accept input and search/generate embeddings
+input_word = input("Enter a word to search for its embedding: ").strip().lower()
+search_or_generate(input_word, embedding_dims, embedding_files)
